@@ -1,5 +1,6 @@
 .terraform/*
 *.tfstate
 *.tfstate.*
-
+/deploy-aws-infrastructure/*.tfstate
+/deploy-aws-infrastructure/*.tfstate.*
 *.tfvars
