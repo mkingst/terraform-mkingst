@@ -1,144 +1,31 @@
 provider "aws" {
-  region = var.region
-  }
-
-variable vpc_cidr_block {}
-variable subnet_cidr_block {}
-variable region {}
-variable avail_zone {}
-variable env_prefix {}
-variable instance_type {}
-variable public_key_location {}
-
-//to use a variable inside a string, use ${}
-
-resource "aws_vpc" "mkingst-vpc" {
-  cidr_block = var.vpc_cidr_block
-  tags = {
-    Name: "${var.env_prefix}-vpc"
-  }
+    region = "eu-west-3"
 }
 
-resource "aws_subnet" "mkingst-subnet-1" {
-  vpc_id = aws_vpc.mkingst-vpc.id
-  cidr_block = var.subnet_cidr_block
-  availability_zone = var.avail_zone
-  tags = {
-    Name: "${var.env_prefix}-subnet-1"
-  }
-}
-
-//to give the resource sin the VPC access to the internet, add a new route table and IG
-//internal traffic in the VPC is confogured automatically
-
-resource "aws_internet_gateway" "mkingst-igw" {
-  vpc_id = aws_vpc.mkingst-vpc.id
+resource "aws_vpc" "myapp-vpc" {
+    cidr_block = var.vpc_cidr_block
     tags = {
-      Name: "${var.env_prefix}-igw"
-  }
-}
-
-resource "aws_route_table" "mkingst-route-table" {
-  vpc_id = aws_vpc.mkingst-vpc.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.mkingst-igw.id
-  }
-  tags = {
-    Name: "${var.env_prefix}-rtb"
-  }
-}
-
-//we need our subnets associated with the route table that has the internet gateway
-//otherwise they are associated with the main route table, which is not a good idea
-
-resource "aws_route_table_association" "a-rtb-subnet" {
-  subnet_id = aws_subnet.mkingst-subnet-1.id
-  route_table_id = aws_route_table.mkingst-route-table.id
-}
-
-//now all resources we create will be handled by this route table
-//why can't we just use the default route table? we can, using aws_default_route_table resource
-
-resource "aws_security_group" "mkingst-wg" {
-  name = "mkingst-sg"
-  vpc_id = aws_vpc.mkingst-vpc.id
-
- // To Allow SSH Transport
-  ingress {
-    from_port = 22
-    protocol = "tcp"
-    to_port = 22
-    //source
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  // To Allow Port 80 Transport
-  ingress {
-    from_port = 80
-    protocol = "tcp"
-    to_port = 90
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  //to allow requests to leave he VPC , eg to fetch docker images
-  egress {
-    from_port       = 0
-    to_port         = 0
-    //all protocols
-    protocol        = "-1"
-    cidr_blocks     = ["0.0.0.0/0"]
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = {
-    Name: "${var.env_prefix}-sg"
+        Name = "${var.env_prefix}-vpc"
     }
 }
 
-data "aws_ami" "latest-amazon-linux-image" {
-  most_recent = true
-  owners = ["amazon"]
-  filter {
-    name = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
-  }
-  filter {
-    name = "virtualization-type"
-    values = ["hvm"]
-  }
+module "myapp-subnet" {
+    source = "./modules/subnet"
+    subnet_cidr_block = var.subnet_cidr_block
+    avail_zone = var.avail_zone
+    env_prefix = var.env_prefix
+    vpc_id = aws_vpc.myapp-vpc.id
+    default_route_table_id = aws_vpc.myapp-vpc.default_route_table_id
 }
 
-output "aws_ami_id" {
-  value = data.aws_ami.latest-amazon-linux-image.id
-}
-
-output "ec2_public_ip" {
-    value = aws_instance.myapp-server.public_ip
-}
-
-resource "aws_key_pair" "ssh-key" {
-    key_name = "server-key"
-    public_key = file(var.public_key_location)
-}
-
-
-resource "aws_instance" "myapp-server" {
-    ami = data.aws_ami.latest-amazon-linux-image.id
+module "myapp-server" {
+    source = "./modules/webserver"
+    vpc_id = aws_vpc.myapp-vpc.id
+    my_ip = var.my_ip
+    env_prefix = var.env_prefix
+    image_name = var.image_name
+    public_key_location = var.public_key_location
     instance_type = var.instance_type
-
-    subnet_id = aws_subnet.mkingst-subnet-1.id
-    vpc_security_group_ids = [aws_security_group.mkingst-wg.id]
-    availability_zone = var.avail_zone
-
-    associate_public_ip_address = true
-    key_name = aws_key_pair.ssh-key.key_name
-
-    tags = {
-          Name: "${var.env_prefix}-server"
-    }
+    subnet_id = module.myapp-subnet.subnet.id
+    avail_zone = var.avail_zone
 }
