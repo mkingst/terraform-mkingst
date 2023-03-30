@@ -10,8 +10,6 @@ variable env_prefix {}
 variable instance_type {}
 variable public_key_location {}
 
-//to use a variable inside a string, use ${}
-
 resource "aws_vpc" "mkingst-vpc" {
   cidr_block = var.vpc_cidr_block
   tags = {
@@ -27,9 +25,6 @@ resource "aws_subnet" "mkingst-subnet-1" {
     Name: "${var.env_prefix}-subnet-1"
   }
 }
-
-//to give the resource sin the VPC access to the internet, add a new route table and IG
-//internal traffic in the VPC is confogured automatically
 
 resource "aws_internet_gateway" "mkingst-igw" {
   vpc_id = aws_vpc.mkingst-vpc.id
@@ -49,9 +44,6 @@ resource "aws_route_table" "mkingst-route-table" {
     Name: "${var.env_prefix}-rtb"
   }
 }
-
-//we need our subnets associated with the route table that has the internet gateway
-//otherwise they are associated with the main route table, which is not a good idea
 
 resource "aws_route_table_association" "a-rtb-subnet" {
   subnet_id = aws_subnet.mkingst-subnet-1.id
